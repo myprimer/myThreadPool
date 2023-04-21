@@ -31,7 +31,7 @@
 
 ## 线程池实现
 
-[ThreadPool](./src/ThreadPool.hpp)
+[ThreadPool](./ThreadPool/ThreadPool.hpp)
 
 # 使用方法
 
