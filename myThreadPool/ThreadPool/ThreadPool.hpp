@@ -1,6 +1,7 @@
 #ifndef __THREADPOOL__
 #define __THREADPOOL__
 
+#include <iostream>
 #include <thread>
 #include <mutex>
 #include <vector>
@@ -10,17 +11,15 @@
 #include <atomic>
 #include <future>
 
-#define THREADPOOL_MAX_NUM 16
-
 class ThreadPool {
 public:
     using Task = std::function<void()>;
     using UniqueLock = std::unique_lock<std::mutex>;
     
     // 构造函数
-    explicit ThreadPool(int maxThreadNum, int minThreadNum = std::thread::hardware_concurrency()) : is_exit_(false), busyNum_(0) {
-        maxThreadNum_ = maxThreadNum;
+    explicit ThreadPool(int minThreadNum = std::thread::hardware_concurrency(), int maxThreadNum = 16) : is_exit_(false), busyNum_(0) {
         minThreadNum_ = minThreadNum;
+        maxThreadNum_ = maxThreadNum;
         addThread(minThreadNum_);
         managerThread_ = std::move(std::thread(&ThreadPool::manager, this));
     }
@@ -29,14 +28,14 @@ public:
     ~ThreadPool() {
         is_exit_ = true;
 
-        // 唤醒所有阻塞的消费者线程，空闲的线程解除阻塞后判断到线程池关闭后就会调用线程退出函数自杀
-        if (workerThreads_.size() > 0) {
-            cv_.notify_all();
-        }
-
         // 回收管理线程
         if (managerThread_.joinable()) {
             managerThread_.join();
+        }
+
+        // 唤醒所有阻塞的消费者线程，空闲的线程解除阻塞后判断到线程池关闭后就会调用线程退出函数自杀
+        if (workerThreads_.size() > 0) {
+            cv_.notify_all();
         }
 
         for (auto& th : workerThreads_) {
@@ -86,6 +85,8 @@ public:
     void addThread(int size) {
         for (; workerThreads_.size() < maxThreadNum_ && size > 0; --size) {
             workerThreads_.emplace_back([this](){
+                std::cout << "√ work thread id : " << std::this_thread::get_id() << "  is created..." << std::endl;   
+                
                 while (true) {
                     Task task;
                     {
@@ -93,8 +94,10 @@ public:
                         cv_.wait(lock, [this](){        // 线程池没有退出且任务队列为空，阻塞
                             return is_exit_ || !taskQueue_.empty();
                         }); 
-                        // 线程池退出或者任务队列为空
-                        if (is_exit_ && taskQueue_.empty()) { // 线程池退出且没有任务
+                        // 线程池退出且任务队列为空，管理者线程就唤醒阻塞的线程让其自杀
+                        if (is_exit_ && taskQueue_.empty()) {
+                            lock.unlock();
+                            std::cout << "work thread id : " << std::this_thread::get_id() << "  finished..." << std::endl;
                             return; // return 退出线程函数，一个线程就会销毁
                         }
                         task = std::move(taskQueue_.front()); // 从队列取一个task
@@ -133,6 +136,7 @@ public:
             // 忙的线程* 2 < 线程数 && 线程数 > 最小维护线程数
             if (busyNum_ * 2 < threads_num && threads_num > minThreadNum_) {
                 // 让阻塞的工作线程自杀
+                std::cout << "× destory a thread..." << std::endl;
                 cv_.notify_one();
             }
         }
@@ -141,6 +145,7 @@ public:
 private:
     std::mutex mtx_; // 互斥锁
     std::vector<std::thread> workerThreads_; // 工作线程
+    // std::unordered_map<std::thread::id, std::thread> workerThreads_;     // 工作线程
     unsigned int minThreadNum_; // 最小维护线程数量
 	unsigned int maxThreadNum_; // 最大维护线程数量
     std::condition_variable cv_; // 条件变量
