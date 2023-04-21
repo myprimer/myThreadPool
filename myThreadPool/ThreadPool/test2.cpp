@@ -27,7 +27,7 @@ void Base16Encode(const unsigned char* data, int size, unsigned char* out) {
 void Base16EncodeThread(const vector<unsigned char>& data, vector<unsigned char> &out) {
     int size = data.size();
     int th_count = thread::hardware_concurrency();
-    ThreadPool pool(16 ,th_count);
+    ThreadPool pool(th_count, 16);
 
     int slice_count = size / th_count;
     if (size < th_count) {
@@ -48,7 +48,7 @@ void Base16EncodeThread(const vector<unsigned char>& data, vector<unsigned char>
 int main() {
     // 初始化测试数据
     vector<unsigned char> in_data;
-    in_data.resize(1024 * 1024 * 500); // 500M
+    in_data.resize(1024 * 1024 * 200); // 200M
     for (int i = 0; i != in_data.size(); ++i) {
         in_data[i] = i % 256;
     }
